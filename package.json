@@ -1,0 +1,26 @@
+{
+  "name": "iiap---sistema-1",
+  "version": "1.0.0",
+  "description": "> Sistema ciberfísico de monitoreo y control autónomo para el proceso de curado y escaldado de vainilla en la región del Chocó, Colombia. Diseñado para operar bajo condiciones de humedad ambiente persistente >90%.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FabricioColedani/IIAP-Sistema-1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/FabricioColedani/IIAP-Sistema-1/issues"
+  },
+  "homepage": "https://github.com/FabricioColedani/IIAP-Sistema-1#readme",
+  "dependencies": {
+    "@types/node": "^26.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
