@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IIAP 2026 – Control Cámaras Climáticas | Chocó Vanilla Tech</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --verde-selva: #1a5c2e;
+    --verde-selva-claro: #2d8c4e;
+    --verde-acento: #3dba6a;
+    --gris-base: #0f1117;
+    --gris-panel: #181c24;
+    --gris-tarjeta: #1e2433;
+    --gris-borde: #2a3045;
+    --gris-texto: #8b95a8;
+    --rojo-alerta: #e53e3e;
+    --rojo-alerta-claro: #fc8181;
+    --amber: #f6ad55;
+    --azul-info: #63b3ed;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--gris-base);
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── ALERTA CRÍTICA (parpadeo rojo) ── */
+  @keyframes parpadeo-fondo {
+    0%, 100% { background-color: var(--gris-base); }
+    50% { background-color: rgba(229, 62, 62, 0.06); }
+  }
+  @keyframes parpadeo-borde {
+    0%, 100% { border-color: var(--rojo-alerta); box-shadow: 0 0 0 2px rgba(229,62,62,0.3); }
+    50% { border-color: #fc8181; box-shadow: 0 0 16px 4px rgba(229,62,62,0.5); }
+  }
+  @keyframes pulso-dot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.7; }
+  }
+  @keyframes entrada {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes progress-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  body.alerta-activa { animation: parpadeo-fondo 1.2s ease-in-out infinite; }
+
+  .card-alerta-activa {
+    animation: parpadeo-borde 1.2s ease-in-out infinite;
+    border: 1px solid var(--rojo-alerta);
+  }
+  .dot-alerta { animation: pulso-dot 1.2s ease-in-out infinite; }
+
+  /* ── TARJETAS ── */
+  .tarjeta {
+    background: var(--gris-tarjeta);
+    border: 1px solid var(--gris-borde);
+    border-radius: 12px;
+    padding: 20px;
+    animation: entrada 0.4s ease both;
+  }
+
+  /* ── GAUGE CIRCULAR ── */
+  .gauge-ring {
+    fill: none;
+    stroke-linecap: round;
+    stroke-width: 8;
+    transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+                stroke 0.8s ease;
+  }
+  .gauge-bg { fill: none; stroke: var(--gris-borde); stroke-width: 8; }
+
+  /* ── BARRA DE PROGRESO ESCALDADO ── */
+  .barra-progreso-inner {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--verde-selva-claro), var(--verde-acento));
+    background-size: 200% 100%;
+    transition: width 1s linear;
+  }
+  .barra-progreso-inner.activa {
+    animation: progress-shimmer 2s linear infinite;
+  }
+
+  /* ── BOTONES ── */
+  .btn {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    transition: all 0.18s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primario {
+    background: var(--verde-selva);
+    color: #a7f3c0;
+    padding: 10px 20px;
+    border: 1px solid var(--verde-selva-claro);
+  }
+  .btn-primario:hover:not(:disabled) {
+    background: var(--verde-selva-claro);
+    box-shadow: 0 0 12px rgba(61,186,106,0.25);
+  }
+  .btn-peligro {
+    background: rgba(229, 62, 62, 0.15);
+    color: var(--rojo-alerta-claro);
+    padding: 10px 20px;
+    border: 1px solid rgba(229,62,62,0.4);
+  }
+  .btn-peligro:hover:not(:disabled) {
+    background: rgba(229, 62, 62, 0.28);
+  }
+  .btn-ack {
+    background: rgba(246, 173, 85, 0.15);
+    color: var(--amber);
+    padding: 12px 28px;
+    border: 1px solid rgba(246,173,85,0.4);
+    font-size: 14px;
+  }
+  .btn-ack:hover:not(:disabled) {
+    background: rgba(246,173,85,0.28);
+    box-shadow: 0 0 14px rgba(246,173,85,0.3);
+  }
+
+  /* ── INDICADOR DE ESTADO EXTRACTOR ── */
+  .extractor-icono {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    transition: all 0.5s ease;
+  }
+  .extractor-apagado { background: rgba(43,52,71,0.8); color: #4a5568; }
+  .extractor-encendido {
+    background: rgba(61,186,106,0.15);
+    color: var(--verde-acento);
+    box-shadow: 0 0 16px rgba(61,186,106,0.4);
+    animation: spin-lento 3s linear infinite;
+  }
+  @keyframes spin-lento { to { transform: rotate(360deg); } }
+
+  /* ── MINI GRÁFICA DE TEMPERATURA ── */
+  canvas { display: block; }
+
+  /* ── ZONA DE TEMPERATURA ESCALDADO ── */
+  .zona-fria { color: var(--azul-info); }
+  .zona-segura { color: var(--verde-acento); }
+  .zona-caliente { color: var(--rojo-alerta-claro); }
+
+  /* ── HEADER BADGE ── */
+  .badge-estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .badge-ok { background: rgba(61,186,106,0.12); color: var(--verde-acento); border: 1px solid rgba(61,186,106,0.3); }
+  .badge-alerta { background: rgba(229,62,62,0.12); color: var(--rojo-alerta-claro); border: 1px solid rgba(229,62,62,0.3); }
+
+  /* ── LOG ── */
+  .log-entry { font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .log-scroll { max-height: 130px; overflow-y: auto; scrollbar-width: thin; }
+  .log-scroll::-webkit-scrollbar { width: 4px; }
+  .log-scroll::-webkit-scrollbar-thumb { background: var(--gris-borde); border-radius: 2px; }
+</style>
+</head>
+<body class="p-4 md:p-6">
+
+<!-- ══ HEADER ═══════════════════════════════════════════════ -->
+<header class="mb-6">
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span style="font-size:9px;letter-spacing:0.15em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;">IIAP 2026 · SISTEMA 1</span>
+        <span id="badge-estado" class="badge-estado badge-ok">
+          <span id="dot-estado" style="width:6px;height:6px;border-radius:50%;background:var(--verde-acento);display:inline-block;"></span>
+          OPERATIVO
+        </span>
+      </div>
+      <h1 style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#f0f4ff;">
+        Control Cámaras Climáticas
+      </h1>
+      <p style="font-size:13px;color:var(--gris-texto);margin-top:2px;">Chocó Vanilla Tech · Nave A-01 · Región Chocó</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-right">
+        <div class="mono text-xs" style="color:var(--gris-texto);">CICLO ACTIVO</div>
+        <div id="reloj-ciclo" class="mono" style="font-size:20px;color:var(--verde-acento);font-weight:600;">00:00:00</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ ALERTA CRÍTICA (se muestra/oculta dinámicamente) ════ -->
+<div id="panel-alerta" class="hidden tarjeta card-alerta-activa mb-5" style="border-color:var(--rojo-alerta);">
+  <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div class="flex items-start gap-3">
+      <div class="dot-alerta" style="width:14px;height:14px;border-radius:50%;background:var(--rojo-alerta);margin-top:3px;flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:11px;letter-spacing:0.1em;color:var(--rojo-alerta-claro);font-weight:700;margin-bottom:3px;">⚠ ALARMA CRÍTICA – HUMEDAD RELATIVA</div>
+        <div id="alerta-mensaje" style="font-size:14px;color:#fed7d7;font-weight:500;"></div>
+        <div id="alerta-timestamp" style="font-size:11px;color:var(--gris-texto);margin-top:4px;" class="mono"></div>
+      </div>
+    </div>
+    <button id="btn-ack" class="btn btn-ack" onclick="acknowledgeAlarma()">
+      ✓ Confirmar Alerta (ACK)
+    </button>
+  </div>
+</div>
+
+<!-- ══ GRID PRINCIPAL ═══════════════════════════════════════ -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-5">
+
+  <!-- ── Temperatura Cámara ─────────────────────────────── -->
+  <div id="card-temperatura" class="tarjeta">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div style="font-size:10px;letter-spacing:0.12em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;">Temperatura Cámara</div>
+        <div style="font-size:11px;color:var(--gris-texto);margin-top:1px;">Objetivo: 28 °C ± 1°C</div>
+      </div>
+      <div id="badge-temp" class="badge-estado badge-ok" style="font-size:10px;">NOMINAL</div>
+    </div>
+    <div class="flex items-center justify-center">
+      <div style="position:relative;width:140px;height:140px;">
+        <svg width="140" height="140" viewBox="0 0 140 140" style="transform:rotate(-90deg)">
+          <circle class="gauge-bg" cx="70" cy="70" r="54"/>
+          <circle id="gauge-temp-ring" class="gauge-ring" cx="70" cy="70" r="54"
+            stroke="var(--verde-acento)"
+            stroke-dasharray="339.3"
+            stroke-dashoffset="339.3"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div id="valor-temp" class="mono" style="font-size:32px;font-weight:700;color:#f0f4ff;line-height:1;">--</div>
+          <div style="font-size:12px;color:var(--gris-texto);margin-top:2px;">°C</div>
+        </div>
+      </div>
+    </div>
+    <div id="estado-calefactor" class="mt-3 text-center" style="font-size:11px;color:var(--gris-texto);">Calefactor: —</div>
+  </div>
+
+  <!-- ── Humedad Relativa ───────────────────────────────── -->
+  <div id="card-humedad" class="tarjeta">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div style="font-size:10px;letter-spacing:0.12em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;">Humedad Relativa</div>
+        <div style="font-size:11px;color:var(--gris-texto);margin-top:1px;">Umbral crítico: 75% HR</div>
+      </div>
+      <div id="badge-humedad" class="badge-estado badge-ok" style="font-size:10px;">NORMAL</div>
+    </div>
+    <div class="flex items-center justify-center">
+      <div style="position:relative;width:140px;height:140px;">
+        <svg width="140" height="140" viewBox="0 0 140 140" style="transform:rotate(-90deg)">
+          <circle class="gauge-bg" cx="70" cy="70" r="54"/>
+          <circle id="gauge-hr-ring" class="gauge-ring" cx="70" cy="70" r="54"
+            stroke="var(--azul-info)"
+            stroke-dasharray="339.3"
+            stroke-dashoffset="339.3"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div id="valor-hr" class="mono" style="font-size:32px;font-weight:700;color:#f0f4ff;line-height:1;">--</div>
+          <div style="font-size:12px;color:var(--gris-texto);margin-top:2px;">% HR</div>
+        </div>
+      </div>
+    </div>
+    <!-- Indicador extractor -->
+    <div class="flex items-center justify-center gap-3 mt-3">
+      <div id="extractor-icono" class="extractor-icono extractor-apagado">⟳</div>
+      <div>
+        <div style="font-size:11px;color:var(--gris-texto);">Extractor de aire</div>
+        <div id="extractor-estado-txt" style="font-size:13px;font-weight:600;color:#4a5568;">APAGADO</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Gráfica mini histórico ────────────────────────── -->
+  <div class="tarjeta" style="animation-delay:0.1s;">
+    <div style="font-size:10px;letter-spacing:0.12em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;margin-bottom:12px;">Histórico 60s</div>
+    <canvas id="canvas-historico" width="300" height="130" style="width:100%;max-width:300px;"></canvas>
+    <div class="flex justify-between mt-2" style="font-size:10px;color:var(--gris-texto);">
+      <span style="color:var(--verde-acento);">── Temperatura</span>
+      <span style="color:var(--azul-info);">── Humedad</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ SIMULADOR DE ESCALDADO ════════════════════════════════ -->
+<div class="tarjeta mb-5" style="animation-delay:0.15s;">
+  <div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-5">
+    <div>
+      <div style="font-size:10px;letter-spacing:0.12em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;margin-bottom:4px;">Proceso de Escaldado – Choque Térmico</div>
+      <div style="font-size:13px;color:var(--gris-texto);">Zona segura: 63 °C – 65 °C · Duración ininterrumpida: 3 minutos</div>
+    </div>
+    <div class="flex gap-2">
+      <button id="btn-iniciar-escaldado" class="btn btn-primario" onclick="iniciarEscaldado()">
+        ▶ Iniciar Escaldado 3 min
+      </button>
+      <button id="btn-abortar-escaldado" class="btn btn-peligro" onclick="abortarEscaldado()" disabled>
+        ✕ Abortar
+      </button>
+    </div>
+  </div>
+
+  <!-- Conteo regresivo + barra -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+    <!-- Timer -->
+    <div class="text-center">
+      <div style="font-size:10px;letter-spacing:0.1em;color:var(--gris-texto);text-transform:uppercase;margin-bottom:6px;">Tiempo restante</div>
+      <div id="timer-escaldado" class="mono" style="font-size:48px;font-weight:700;color:var(--verde-acento);letter-spacing:-0.02em;line-height:1;">3:00</div>
+      <div id="estado-escaldado-txt" style="font-size:11px;margin-top:4px;color:var(--gris-texto);">EN ESPERA</div>
+    </div>
+
+    <!-- Barra de progreso -->
+    <div class="md:col-span-2">
+      <div class="flex justify-between mb-2" style="font-size:11px;color:var(--gris-texto);">
+        <span>Progreso del ciclo</span>
+        <span id="pct-progreso" class="mono">0%</span>
+      </div>
+      <div style="background:var(--gris-borde);border-radius:9999px;height:10px;overflow:hidden;margin-bottom:16px;">
+        <div id="barra-progreso" class="barra-progreso-inner" style="width:0%;"></div>
+      </div>
+
+      <!-- Monitor gráfico temperatura escaldado -->
+      <div style="font-size:10px;letter-spacing:0.1em;color:var(--gris-texto);text-transform:uppercase;margin-bottom:6px;">Temperatura del tanque</div>
+      <div style="position:relative;">
+        <canvas id="canvas-escaldado" width="400" height="90" style="width:100%;max-width:400px;background:var(--gris-panel);border-radius:8px;"></canvas>
+        <!-- Zona segura label -->
+        <div style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--verde-acento);font-weight:600;letter-spacing:0.05em;">ZONA 63–65°C</div>
+      </div>
+
+      <!-- Temperatura actual tanque -->
+      <div class="flex items-baseline gap-2 mt-3">
+        <div id="temp-tanque-valor" class="mono" style="font-size:28px;font-weight:700;color:#f0f4ff;">--</div>
+        <div style="font-size:13px;color:var(--gris-texto);">°C en tanque</div>
+        <div id="temp-tanque-zona" style="font-size:12px;font-weight:600;margin-left:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resultado del ciclo -->
+  <div id="resultado-escaldado" class="hidden mt-3 p-3" style="background:var(--gris-panel);border-radius:8px;border:1px solid var(--gris-borde);">
+    <div id="resultado-texto" style="font-size:13px;"></div>
+  </div>
+</div>
+
+<!-- ══ LOG DE EVENTOS ════════════════════════════════════════ -->
+<div class="tarjeta" style="animation-delay:0.2s;">
+  <div class="flex items-center justify-between mb-3">
+    <div style="font-size:10px;letter-spacing:0.12em;color:var(--gris-texto);text-transform:uppercase;font-weight:600;">Log de Eventos del Sistema</div>
+    <button class="btn" onclick="limpiarLog()" style="font-size:11px;padding:4px 10px;background:var(--gris-panel);border:1px solid var(--gris-borde);color:var(--gris-texto);border-radius:6px;">Limpiar</button>
+  </div>
+  <div id="log-eventos" class="log-scroll"></div>
+</div>
+
+<!-- ══ FOOTER ════════════════════════════════════════════════ -->
+<footer class="mt-5 text-center" style="font-size:10px;color:var(--gris-texto);letter-spacing:0.05em;">
+  IIAP 2026 · Proyecto Chocó Vanilla Tech · CAM-001 · Nave A · Sistema 1 v1.0 · Actualización cada 3s
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// ESTADO DEL SISTEMA (equivale al estado del backend TypeScript)
+// ══════════════════════════════════════════════════════════════
+const REGLAS = {
+  TEMP_CAMARA_OBJETIVO: 28,
+  UMBRAL_HUMEDAD_CRITICA: 75,
+  HUMEDAD_OBJETIVO: 65,
+  TEMP_ESCALDADO_MIN: 63,
+  TEMP_ESCALDADO_MAX: 65,
+  DURACION_ESCALDADO_MS: 3 * 60 * 1000,
+};
+
+let estado = {
+  temperaturaC: 26.5,
+  humedadHR: 62.0,
+  extractorEncendido: false,
+  calefactorEncendido: false,
+  alarmaActiva: false,
+  alarmaId: null,
+  alarmaTimestamp: null,
+  escaldadoActivo: false,
+  escaldadoAbortado: false,
+  tiempoRestanteMs: REGLAS.DURACION_ESCALDADO_MS,
+  tempTanque: 55.0,
+  muestrasTemp: [],    // { t, temp, hr }
+  muestrasTanque: [],  // { t, temp }
+  ciclosTelemetria: 0,
+  tiempoInicioSistema: Date.now(),
+};
+
+// ══════════════════════════════════════════════════════════════
+// SIMULACIÓN DE TELEMETRÍA (cada 3 segundos)
+// ══════════════════════════════════════════════════════════════
+
+function simularTelemetria() {
+  // Variación aleatoria con deriva lenta (simula Chocó: tendencia a subir HR)
+  const driftHR = Math.sin(Date.now() / 45000) * 8;
+  estado.humedadHR = Math.max(40, Math.min(99,
+    estado.humedadHR + (Math.random() - 0.42) * 1.8 + driftHR * 0.03
+  ));
+
+  // Temperatura cámara: el calefactor la sube, ambiente la baja
+  const ajusteCalefactor = estado.calefactorEncendido ? 0.4 : -0.2;
+  const ajusteExtractor = estado.extractorEncendido ? -0.15 : 0;
+  estado.temperaturaC = Math.max(18, Math.min(45,
+    estado.temperaturaC + (Math.random() - 0.5) * 0.6 + ajusteCalefactor + ajusteExtractor
+  ));
+
+  // Control lógico: replicar el BucleControlCamara TypeScript
+  evaluarControl();
+
+  estado.ciclosTelemetria++;
+  const ahora = Date.now();
+  estado.muestrasTemp.push({
+    t: ahora,
+    temp: estado.temperaturaC,
+    hr: estado.humedadHR,
+  });
+  if (estado.muestrasTemp.length > 20) estado.muestrasTemp.shift();
+
+  actualizarUI();
+}
+
+function evaluarControl() {
+  const hr = estado.humedadHR;
+  const temp = estado.temperaturaC;
+
+  // ── Regla Humedad (Chocó: umbral crítico 75%) ────────────
+  if (hr > REGLAS.UMBRAL_HUMEDAD_CRITICA) {
+    if (!estado.extractorEncendido) {
+      estado.extractorEncendido = true;
+      agregarLog(`⟳ Extractor ACTIVADO por humedad crítica (${hr.toFixed(1)}% > ${REGLAS.UMBRAL_HUMEDAD_CRITICA}%)`, 'critico');
+    }
+    if (!estado.alarmaActiva) {
+      dispararAlarma(hr);
+    }
+  } else if (hr <= REGLAS.HUMEDAD_OBJETIVO) {
+    if (estado.extractorEncendido) {
+      estado.extractorEncendido = false;
+      agregarLog(`⟳ Extractor APAGADO. Humedad normalizada (${hr.toFixed(1)}%)`, 'ok');
+    }
+    if (estado.alarmaActiva && hr <= REGLAS.HUMEDAD_OBJETIVO) {
+      // La alarma debe ser reconocida manualmente; no se auto-resuelve
+    }
+  }
+
+  // ── Regla Temperatura (histéresis ±1°C) ────────────────
+  if (temp < REGLAS.TEMP_CAMARA_OBJETIVO - 1) {
+    if (!estado.calefactorEncendido) {
+      estado.calefactorEncendido = true;
+      agregarLog(`🔥 Calefactor ENCENDIDO. T=${temp.toFixed(1)}°C < ${REGLAS.TEMP_CAMARA_OBJETIVO - 1}°C`, 'info');
+    }
+  } else if (temp > REGLAS.TEMP_CAMARA_OBJETIVO + 1) {
+    if (estado.calefactorEncendido) {
+      estado.calefactorEncendido = false;
+      agregarLog(`🔥 Calefactor APAGADO. T=${temp.toFixed(1)}°C > ${REGLAS.TEMP_CAMARA_OBJETIVO + 1}°C`, 'info');
+    }
+  }
+}
+
+function dispararAlarma(hrValor) {
+  estado.alarmaActiva = true;
+  estado.alarmaId = `ALM-HR-CAM001-${Date.now()}`;
+  estado.alarmaTimestamp = new Date();
+
+  const msg = `HR: ${hrValor.toFixed(1)}% supera el umbral crítico (${REGLAS.UMBRAL_HUMEDAD_CRITICA}%). ` +
+              `Riesgo de proliferación de hongos/moho. Extractor activado. Requiere confirmación.`;
+
+  document.getElementById('alerta-mensaje').textContent = msg;
+  document.getElementById('alerta-timestamp').textContent =
+    `Alarma: ${estado.alarmaId} · ${estado.alarmaTimestamp.toLocaleString('es-CO')}`;
+  document.getElementById('panel-alerta').classList.remove('hidden');
+  document.body.classList.add('alerta-activa');
+
+  actualizarBadgeEstado(true);
+  agregarLog(`🚨 ALARMA CRÍTICA: ${msg}`, 'critico');
+}
+
+function acknowledgeAlarma() {
+  if (!estado.alarmaActiva) return;
+  const alarmaId = estado.alarmaId;
+  estado.alarmaActiva = false;
+
+  document.getElementById('panel-alerta').classList.add('hidden');
+  document.body.classList.remove('alerta-activa');
+  actualizarBadgeEstado(false);
+
+  agregarLog(`✓ Alarma ${alarmaId} reconocida por OPERARIO-001 a las ${new Date().toLocaleTimeString('es-CO')}`, 'ok');
+}
+
+// ══════════════════════════════════════════════════════════════
+// SIMULADOR DE ESCALDADO
+// ══════════════════════════════════════════════════════════════
+
+let intervaloEscaldado = null;
+let tiempoEnZonaMs = 0;
+let ultimoTickEscaldado = null;
+
+function iniciarEscaldado() {
+  if (estado.escaldadoActivo) return;
+
+  estado.escaldadoActivo = true;
+  estado.escaldadoAbortado = false;
+  estado.tiempoRestanteMs = REGLAS.DURACION_ESCALDADO_MS;
+  estado.tempTanque = 55.0;
+  estado.muestrasTanque = [];
+  tiempoEnZonaMs = 0;
+  ultimoTickEscaldado = Date.now();
+
+  document.getElementById('btn-iniciar-escaldado').disabled = true;
+  document.getElementById('btn-abortar-escaldado').disabled = false;
+  document.getElementById('resultado-escaldado').classList.add('hidden');
+
+  agregarLog('▶ Ciclo de escaldado INICIADO. Calentando tanque a zona segura 63–65°C', 'info');
+
+  intervaloEscaldado = setInterval(tickEscaldado, 200);
+}
+
+function abortarEscaldado() {
+  if (!estado.escaldadoActivo) return;
+  estado.escaldadoAbortado = true;
+  finalizarEscaldado(false);
+  agregarLog('✕ Ciclo de escaldado ABORTADO por operario', 'critico');
+}
+
+function tickEscaldado() {
+  const ahora = Date.now();
+  const delta = ahora - ultimoTickEscaldado;
+  ultimoTickEscaldado = ahora;
+
+  // Simular temperatura del tanque
+  const objetivo = (REGLAS.TEMP_ESCALDADO_MIN + REGLAS.TEMP_ESCALDADO_MAX) / 2;
+  const diff = objetivo - estado.tempTanque;
+  const velocidadCalentamiento = diff > 0 ? Math.min(diff * 0.008, 0.15) : diff * 0.006;
+  const ruido = (Math.random() - 0.5) * 0.3;
+  estado.tempTanque = Math.max(30, Math.min(80, estado.tempTanque + velocidadCalentamiento + ruido));
+
+  const enZona = estado.tempTanque >= REGLAS.TEMP_ESCALDADO_MIN && estado.tempTanque <= REGLAS.TEMP_ESCALDADO_MAX;
+
+  if (enZona) {
+    tiempoEnZonaMs += delta;
+    estado.tiempoRestanteMs = Math.max(0, REGLAS.DURACION_ESCALDADO_MS - tiempoEnZonaMs);
+  } else {
+    // Reiniciar contador si sale del rango
+    if (tiempoEnZonaMs > 0) {
+      agregarLog(`⚠ Temperatura ${estado.tempTanque.toFixed(1)}°C salió del rango. Contador reiniciado.`, 'advertencia');
+    }
+    tiempoEnZonaMs = 0;
+    estado.tiempoRestanteMs = REGLAS.DURACION_ESCALDADO_MS;
+  }
+
+  const ts = Date.now();
+  estado.muestrasTanque.push({ t: ts, temp: estado.tempTanque });
+  if (estado.muestrasTanque.length > 60) estado.muestrasTanque.shift();
+
+  actualizarUIEscaldado();
+
+  if (estado.tiempoRestanteMs <= 0) {
+    finalizarEscaldado(true);
+  }
+}
+
+function finalizarEscaldado(exitoso) {
+  clearInterval(intervaloEscaldado);
+  intervaloEscaldado = null;
+  estado.escaldadoActivo = false;
+
+  document.getElementById('btn-iniciar-escaldado').disabled = false;
+  document.getElementById('btn-abortar-escaldado').disabled = true;
+
+  const resultadoDiv = document.getElementById('resultado-escaldado');
+  const resultadoTexto = document.getElementById('resultado-texto');
+
+  if (exitoso) {
+    resultadoTexto.innerHTML = `
+      <span style="color:var(--verde-acento);font-weight:700;">✅ CICLO COMPLETADO EXITOSAMENTE</span>
+      <span style="color:var(--gris-texto);margin-left:12px;font-size:11px;">
+        3 min continuos en zona 63–65°C · T̄=${estado.tempTanque.toFixed(1)}°C · ${new Date().toLocaleTimeString('es-CO')}
+      </span>`;
+    agregarLog('✅ Escaldado COMPLETADO. Lote conforme a protocolo IIAP 2026.', 'ok');
+  } else {
+    resultadoTexto.innerHTML = `
+      <span style="color:var(--rojo-alerta-claro);font-weight:700;">❌ CICLO ABORTADO</span>
+      <span style="color:var(--gris-texto);margin-left:12px;font-size:11px;">Lote requiere reevaluación.</span>`;
+  }
+
+  resultadoDiv.classList.remove('hidden');
+  document.getElementById('timer-escaldado').textContent = '3:00';
+  document.getElementById('timer-escaldado').style.color = 'var(--verde-acento)';
+  document.getElementById('estado-escaldado-txt').textContent = exitoso ? 'COMPLETADO' : 'ABORTADO';
+  document.getElementById('barra-progreso').style.width = exitoso ? '100%' : '0%';
+  document.getElementById('barra-progreso').classList.remove('activa');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ACTUALIZACIÓN DE UI
+// ══════════════════════════════════════════════════════════════
+
+function actualizarUI() {
+  const t = estado.temperaturaC;
+  const hr = estado.humedadHR;
+
+  // ── Gauge Temperatura ──────────────────────────────────────
+  const pctTemp = Math.min(100, Math.max(0, (t / 45) * 100));
+  const dashoffsetTemp = 339.3 * (1 - pctTemp / 100);
+  const gaugeTemp = document.getElementById('gauge-temp-ring');
+  gaugeTemp.style.strokeDashoffset = dashoffsetTemp;
+  gaugeTemp.style.stroke = t < 27 ? 'var(--azul-info)' : t > 29 ? 'var(--amber)' : 'var(--verde-acento)';
+  document.getElementById('valor-temp').textContent = t.toFixed(1);
+
+  const badgeTemp = document.getElementById('badge-temp');
+  if (t < REGLAS.TEMP_CAMARA_OBJETIVO - 2 || t > REGLAS.TEMP_CAMARA_OBJETIVO + 3) {
+    badgeTemp.className = 'badge-estado badge-alerta'; badgeTemp.textContent = 'FUERA DE RANGO';
+  } else {
+    badgeTemp.className = 'badge-estado badge-ok'; badgeTemp.textContent = 'NOMINAL';
+  }
+
+  // ── Gauge Humedad ──────────────────────────────────────────
+  const pctHR = Math.min(100, Math.max(0, hr));
+  const dashoffsetHR = 339.3 * (1 - pctHR / 100);
+  const gaugeHR = document.getElementById('gauge-hr-ring');
+  gaugeHR.style.strokeDashoffset = dashoffsetHR;
+  gaugeHR.style.stroke = hr > REGLAS.UMBRAL_HUMEDAD_CRITICA ? 'var(--rojo-alerta)' :
+                          hr > 65 ? 'var(--amber)' : 'var(--azul-info)';
+  document.getElementById('valor-hr').textContent = hr.toFixed(1);
+
+  const badgeHR = document.getElementById('badge-humedad');
+  if (hr > REGLAS.UMBRAL_HUMEDAD_CRITICA) {
+    badgeHR.className = 'badge-estado badge-alerta'; badgeHR.textContent = '⚠ CRÍTICA';
+  } else if (hr > 70) {
+    badgeHR.className = 'badge-estado'; badgeHR.style.cssText = 'background:rgba(246,173,85,.12);color:var(--amber);border:1px solid rgba(246,173,85,.3);font-size:10px;'; badgeHR.textContent = 'ELEVADA';
+  } else {
+    badgeHR.className = 'badge-estado badge-ok'; badgeHR.style.cssText = 'font-size:10px;'; badgeHR.textContent = 'NORMAL';
+  }
+
+  // ── Extractor ─────────────────────────────────────────────
+  const iconoExt = document.getElementById('extractor-icono');
+  const textoExt = document.getElementById('extractor-estado-txt');
+  if (estado.extractorEncendido) {
+    iconoExt.className = 'extractor-icono extractor-encendido';
+    textoExt.textContent = 'ENCENDIDO'; textoExt.style.color = 'var(--verde-acento)';
+  } else {
+    iconoExt.className = 'extractor-icono extractor-apagado';
+    textoExt.textContent = 'APAGADO'; textoExt.style.color = '#4a5568';
+  }
+
+  // ── Calefactor ────────────────────────────────────────────
+  document.getElementById('estado-calefactor').textContent =
+    `Calefactor: ${estado.calefactorEncendido ? '🔥 ENCENDIDO' : 'APAGADO'}`;
+  document.getElementById('estado-calefactor').style.color =
+    estado.calefactorEncendido ? 'var(--amber)' : 'var(--gris-texto)';
+
+  // ── Reloj ciclo ───────────────────────────────────────────
+  const elapsed = Math.floor((Date.now() - estado.tiempoInicioSistema) / 1000);
+  const hh = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('reloj-ciclo').textContent = `${hh}:${mm}:${ss}`;
+
+  // ── Mini gráfica histórico ─────────────────────────────────
+  dibujarHistorico();
+}
+
+function actualizarUIEscaldado() {
+  const msRestantes = estado.tiempoRestanteMs;
+  const minutos = Math.floor(msRestantes / 60000);
+  const segundos = Math.floor((msRestantes % 60000) / 1000);
+  const timerEl = document.getElementById('timer-escaldado');
+  timerEl.textContent = `${minutos}:${String(segundos).padStart(2, '0')}`;
+
+  const progreso = Math.min(100, ((REGLAS.DURACION_ESCALDADO_MS - msRestantes) / REGLAS.DURACION_ESCALDADO_MS) * 100);
+  const barraEl = document.getElementById('barra-progreso');
+  barraEl.style.width = `${progreso}%`;
+  barraEl.classList.add('activa');
+  document.getElementById('pct-progreso').textContent = `${Math.round(progreso)}%`;
+
+  const temp = estado.tempTanque;
+  const enZona = temp >= REGLAS.TEMP_ESCALDADO_MIN && temp <= REGLAS.TEMP_ESCALDADO_MAX;
+  const zonaTxt = document.getElementById('temp-tanque-zona');
+
+  document.getElementById('temp-tanque-valor').textContent = temp.toFixed(1);
+
+  if (temp < REGLAS.TEMP_ESCALDADO_MIN) {
+    timerEl.style.color = 'var(--azul-info)';
+    zonaTxt.textContent = `↑ Calentando (faltan ${(REGLAS.TEMP_ESCALDADO_MIN - temp).toFixed(1)}°C)`;
+    zonaTxt.className = 'zona-fria';
+    document.getElementById('estado-escaldado-txt').textContent = 'CALENTANDO';
+  } else if (enZona) {
+    timerEl.style.color = 'var(--verde-acento)';
+    zonaTxt.textContent = '✓ EN ZONA SEGURA';
+    zonaTxt.className = 'zona-segura';
+    document.getElementById('estado-escaldado-txt').textContent = 'EN ZONA SEGURA – CONTANDO';
+  } else {
+    timerEl.style.color = 'var(--rojo-alerta-claro)';
+    zonaTxt.textContent = `⚠ SOBRE LÍMITE (+${(temp - REGLAS.TEMP_ESCALDADO_MAX).toFixed(1)}°C)`;
+    zonaTxt.className = 'zona-caliente';
+    document.getElementById('estado-escaldado-txt').textContent = 'FUERA DE RANGO – REINICIANDO';
+  }
+
+  dibujarTanque();
+}
+
+// ══════════════════════════════════════════════════════════════
+// CANVAS – GRÁFICAS
+// ══════════════════════════════════════════════════════════════
+
+function dibujarHistorico() {
+  const canvas = document.getElementById('canvas-historico');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width; const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const muestras = estado.muestrasTemp;
+  if (muestras.length < 2) return;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42,48,69,0.8)';
+  ctx.lineWidth = 0.5;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath(); ctx.moveTo(0, (H / 4) * i); ctx.lineTo(W, (H / 4) * i); ctx.stroke();
+  }
+
+  // Temperatura (verde)
+  const tempMin = 15; const tempMax = 45;
+  ctx.strokeStyle = '#3dba6a'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  muestras.forEach((m, i) => {
+    const x = (i / (muestras.length - 1)) * W;
+    const y = H - ((m.temp - tempMin) / (tempMax - tempMin)) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Humedad (azul)
+  ctx.strokeStyle = '#63b3ed'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  muestras.forEach((m, i) => {
+    const x = (i / (muestras.length - 1)) * W;
+    const y = H - (m.hr / 100) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Línea umbral HR 75%
+  ctx.strokeStyle = 'rgba(229,62,62,0.5)'; ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  const yUmbral = H - (0.75 * H);
+  ctx.beginPath(); ctx.moveTo(0, yUmbral); ctx.lineTo(W, yUmbral); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(229,62,62,0.7)'; ctx.font = '9px monospace';
+  ctx.fillText('75%', W - 26, yUmbral - 3);
+}
+
+function dibujarTanque() {
+  const canvas = document.getElementById('canvas-escaldado');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width; const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Zona segura (fondo verde suave)
+  const yMin = H - ((REGLAS.TEMP_ESCALDADO_MIN - 50) / 30) * H;
+  const yMax = H - ((REGLAS.TEMP_ESCALDADO_MAX - 50) / 30) * H;
+  ctx.fillStyle = 'rgba(61,186,106,0.08)';
+  ctx.fillRect(0, yMax, W, yMin - yMax);
+  ctx.strokeStyle = 'rgba(61,186,106,0.3)'; ctx.lineWidth = 0.5;
+  ctx.strokeRect(0, yMax, W, yMin - yMax);
+
+  const muestras = estado.muestrasTanque;
+  if (muestras.length < 2) return;
+
+  // Línea temperatura tanque
+  const getY = (t) => H - ((t - 50) / 30) * H;
+  ctx.strokeStyle = '#f6ad55'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  muestras.forEach((m, i) => {
+    const x = (i / Math.max(muestras.length - 1, 1)) * W;
+    const y = getY(m.temp);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Punto actual
+  if (muestras.length > 0) {
+    const last = muestras[muestras.length - 1];
+    const x = W; const y = getY(last.temp);
+    const enZona = last.temp >= REGLAS.TEMP_ESCALDADO_MIN && last.temp <= REGLAS.TEMP_ESCALDADO_MAX;
+    ctx.fillStyle = enZona ? 'var(--verde-acento)' : '#f6ad55';
+    ctx.beginPath(); ctx.arc(x - 4, y, 4, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOG
+// ══════════════════════════════════════════════════════════════
+
+function agregarLog(mensaje, tipo = 'info') {
+  const colores = {
+    critico: 'var(--rojo-alerta-claro)',
+    advertencia: 'var(--amber)',
+    ok: 'var(--verde-acento)',
+    info: 'var(--azul-info)',
+  };
+  const log = document.getElementById('log-eventos');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="mono" style="color:var(--gris-texto);font-size:10px;">${new Date().toLocaleTimeString('es-CO')}</span>
+    <span style="color:${colores[tipo] || 'var(--azul-info)'};margin-left:8px;">${mensaje}</span>`;
+  log.insertBefore(entry, log.firstChild);
+  if (log.children.length > 50) log.removeChild(log.lastChild);
+}
+
+function limpiarLog() {
+  document.getElementById('log-eventos').innerHTML = '';
+}
+
+function actualizarBadgeEstado(alerta) {
+  const badge = document.getElementById('badge-estado');
+  const dot = document.getElementById('dot-estado');
+  if (alerta) {
+    badge.className = 'badge-estado badge-alerta';
+    badge.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:var(--rojo-alerta);display:inline-block;" class="dot-alerta"></span> ALERTA`;
+  } else {
+    badge.className = 'badge-estado badge-ok';
+    badge.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:var(--verde-acento);display:inline-block;"></span> OPERATIVO`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ARRANQUE
+// ══════════════════════════════════════════════════════════════
+
+agregarLog('Sistema 1 iniciado. Monitoreando CAM-001 · Nave A · Chocó.', 'info');
+agregarLog(`BucleControl activo. Intervalo: 3s. Umbral HR: ${REGLAS.UMBRAL_HUMEDAD_CRITICA}%. T objetivo: ${REGLAS.TEMP_CAMARA_OBJETIVO}°C.`, 'info');
+
+// Telemetría en tiempo real
+setInterval(simularTelemetria, 3000);
+simularTelemetria(); // Primera lectura inmediata
+
+// Canvas responsive
+window.addEventListener('resize', () => { dibujarHistorico(); dibujarTanque(); });
+</script>
+</body>
+</html>
